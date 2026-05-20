@@ -35,12 +35,49 @@ def search(q):
         grouped[name].append(row.to_dict())
     return list(grouped.values())
 
+def cell_val(row, key):
+    v = row.get(key, "")
+    return str(v).strip() if pd.notna(v) and str(v).strip() not in ["nan", ""] else ""
+
+def first_val(rows, key):
+    for row in rows:
+        v = cell_val(row, key)
+        if v:
+            return v
+    return ""
+
+def ameral_entries(rows):
+    entries = []
+    for row in rows:
+        entry = {
+            "סוג": cell_val(row, "סוג אמרל"),
+            "מספר": cell_val(row, "מספר אמרל"),
+            "נוסף": cell_val(row, "אמרל נוסף"),
+        }
+        if any(entry.values()):
+            entries.append(entry)
+    return entries
+
+def fmt_ameral_lines(entries):
+    lines = []
+    multi = len(entries) > 1
+    for i, e in enumerate(entries, 1):
+        if multi:
+            lines.append(f"\n📦 אמרל {i}:")
+        elif not lines:
+            lines.append("\n📦 אמרל:")
+        if e["סוג"]:
+            lines.append(f"סוג אמרל: {e['סוג']}")
+        if e["מספר"]:
+            lines.append(f"מספר אמרל: {e['מספר']}")
+        if e["נוסף"]:
+            lines.append(f"אמרל נוסף: {e['נוסף']}")
+    return lines
+
 def fmt(rows):
     r = rows[0]
     lines = ["─" * 22]
-    def val(k):
-        v = r.get(k, "")
-        return str(v).strip() if pd.notna(v) and str(v).strip() not in ["nan", ""] else ""
+    val = lambda k: cell_val(r, k)
 
     if val("שם החייל"): lines.append(f"👤 שם: {val('שם החייל')}")
     if val("מספר אישי"): lines.append(f"🪪 מספר אישי: {val('מספר אישי')}")
@@ -50,25 +87,21 @@ def fmt(rows):
     if val("כוונת"): lines.append(f"🎯 כוונת: {val('כוונת')}")
     if val("מספר"): lines.append(f"📌 מספר כוונת: {val('מספר')}")
 
-    # אמרלים מכל השורות
-    amrals = []
-    for row in rows:
-        sug = str(row.get("סוג אמרל", "")).strip()
-        num = str(row.get("מספר אמרל", "")).strip()
-        extra = str(row.get("אמרל נוסף", "")).strip()
-        if sug and sug != "nan":
-            amrals.append(f"🔧 {sug}: {num}" if num and num != "nan" else f"🔧 {sug}")
-        if extra and extra != "nan":
-            amrals.append(f"🔧 {extra}")
+    entries = ameral_entries(rows)
+    if entries:
+        lines.extend(fmt_ameral_lines(entries))
 
-    if amrals:
-        lines.append("\n📦 אמרלים:")
-        lines.extend(amrals)
+    when_signed = first_val(rows, "מתי חתם")
+    if when_signed:
+        lines.append(f"מתי חתם: {when_signed}")
 
-    # חתם 30/4
-    chatam = str(r.get("חתם 30/4", r.get("חתם 30\\4", r.get("30/4", "")))).strip()
-    if chatam and chatam not in ["nan", ""]:
-        lines.append(f"\n✅ חתם 30/4: {'כן' if chatam == '1' else chatam}")
+    zoche = first_val(rows, "זוכה")
+    if zoche:
+        lines.append(f"זוכה: {zoche}")
+
+    chatam = first_val(rows, "חתם 30/4") or first_val(rows, "חתם 30\\4") or first_val(rows, "30/4")
+    if chatam:
+        lines.append(f"✅ חתם 30/4: {'כן' if chatam == '1' else chatam}")
 
     return "\n".join(lines)
 
