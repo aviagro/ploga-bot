@@ -3,6 +3,7 @@ services:
     name: ploga-bot
     runtime: python
     plan: free
+    healthCheckPath: /health
     buildCommand: pip install -r requirements.txt
     startCommand: python bot.py
     envVars:

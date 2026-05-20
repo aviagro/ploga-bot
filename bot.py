@@ -5,6 +5,35 @@ load_dotenv()
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
+def _patch_webhook_health():
+    """Render health checks need GET / — PTB webhook app only handles POST /webhook."""
+    try:
+        import tornado.web
+        from telegram.ext._utils import webhookhandler as wh
+    except ImportError:
+        logging.error("חסרה חבילת webhooks: pip install 'python-telegram-bot[webhooks]'")
+        raise SystemExit(1)
+
+    class _HealthHandler(tornado.web.RequestHandler):
+        def get(self):
+            self.write("ok")
+
+    class _WebhookAppWithHealth(wh.WebhookAppClass):
+        def __init__(self, webhook_path, bot, update_queue, secret_token=None):
+            self.shared_objects = {
+                "bot": bot,
+                "update_queue": update_queue,
+                "secret_token": secret_token,
+            }
+            handlers = [
+                (r"/", _HealthHandler),
+                (r"/health", _HealthHandler),
+                (rf"{webhook_path}/?", wh.TelegramHandler, self.shared_objects),
+            ]
+            tornado.web.Application.__init__(self, handlers)
+
+    wh.WebhookAppClass = _WebhookAppWithHealth
+
 TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 URL1 = os.getenv("SHEET_CSV_URL", "")
 logging.basicConfig(level=logging.INFO)
@@ -172,9 +201,16 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, txt))
 
     on_render = os.getenv("RENDER") == "true"
+    host = os.getenv("RENDER_EXTERNAL_HOSTNAME", "")
     webhook_base = (os.getenv("WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
+    if not webhook_base and host:
+        webhook_base = f"https://{host}"
 
-    if on_render and webhook_base:
+    if on_render:
+        if not webhook_base:
+            print("שגיאה: חסר RENDER_EXTERNAL_URL ב-Render")
+            raise SystemExit(1)
+        _patch_webhook_health()
         port = int(os.getenv("PORT", "10000"))
         path = os.getenv("WEBHOOK_PATH", "webhook")
         url = f"{webhook_base}/{path}"
@@ -185,6 +221,7 @@ def main():
             url_path=path,
             webhook_url=url,
             allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
         )
     else:
         print("הבוט פועל!")

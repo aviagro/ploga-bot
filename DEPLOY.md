@@ -32,9 +32,11 @@
 
 ## אם הבוט לא מגיב
 
-- ב-Render → **Logs** — חפש שגיאות.
-- ודא ש-`TELEGRAM_TOKEN` ו-`SHEET_CSV_URL` נכונים.
-- אם הרצת `python bot.py` על המחשב — עצור אותו (שני מקומות = התנגשות).
+1. ב-Render → **Logs** — חייב להופיע: `הבוט פועל בענן (webhook): https://...`
+2. אם יש `Conflict` או `tornado` — לחץ **Manual Deploy** (אחרי עדכון קוד מ-GitHub).
+3. ודא ש-`TELEGRAM_TOKEN` ו-`SHEET_CSV_URL` מוגדרים ב-Environment.
+4. **אל תריץ** `python bot.py` על המחשב במקביל ל-Render.
+5. בדיקה: פתח בדפדפן `https://שם-השירות.onrender.com/health` — אמור להופיע `ok`.
 
 ## עלות
 
