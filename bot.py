@@ -157,14 +157,38 @@ async def go(u, q):
         await u.message.reply_text(header + "\n\n".join(parts))
 
 def main():
+    if not TOKEN:
+        print("שגיאה: חסר TELEGRAM_TOKEN")
+        raise SystemExit(1)
+    if not URL1:
+        print("שגיאה: חסר SHEET_CSV_URL")
+        raise SystemExit(1)
+
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("search", srch))
     app.add_handler(CommandHandler("list", lst))
     app.add_handler(CommandHandler("columns", cols))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, txt))
-    print("הבוט פועל!")
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+    on_render = os.getenv("RENDER") == "true"
+    webhook_base = (os.getenv("WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
+
+    if on_render and webhook_base:
+        port = int(os.getenv("PORT", "10000"))
+        path = os.getenv("WEBHOOK_PATH", "webhook")
+        url = f"{webhook_base}/{path}"
+        print(f"הבוט פועל בענן (webhook): {url}")
+        app.run_webhook(
+            listen="0.0.0.0",
+            port=port,
+            url_path=path,
+            webhook_url=url,
+            allowed_updates=Update.ALL_TYPES,
+        )
+    else:
+        print("הבוט פועל!")
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
