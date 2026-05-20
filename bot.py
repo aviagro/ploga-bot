@@ -5,35 +5,6 @@ load_dotenv()
 from telegram import Update
 from telegram.ext import Application, CommandHandler, MessageHandler, ContextTypes, filters
 
-def _patch_webhook_health():
-    """Render health checks need GET / — PTB webhook app only handles POST /webhook."""
-    try:
-        import tornado.web
-        from telegram.ext._utils import webhookhandler as wh
-    except ImportError:
-        logging.error("חסרה חבילת webhooks: pip install 'python-telegram-bot[webhooks]'")
-        raise SystemExit(1)
-
-    class _HealthHandler(tornado.web.RequestHandler):
-        def get(self):
-            self.write("ok")
-
-    class _WebhookAppWithHealth(wh.WebhookAppClass):
-        def __init__(self, webhook_path, bot, update_queue, secret_token=None):
-            self.shared_objects = {
-                "bot": bot,
-                "update_queue": update_queue,
-                "secret_token": secret_token,
-            }
-            handlers = [
-                (r"/", _HealthHandler),
-                (r"/health", _HealthHandler),
-                (rf"{webhook_path}/?", wh.TelegramHandler, self.shared_objects),
-            ]
-            tornado.web.Application.__init__(self, handlers)
-
-    wh.WebhookAppClass = _WebhookAppWithHealth
-
 TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 URL1 = os.getenv("SHEET_CSV_URL", "")
 logging.basicConfig(level=logging.INFO)
@@ -64,49 +35,12 @@ def search(q):
         grouped[name].append(row.to_dict())
     return list(grouped.values())
 
-def cell_val(row, key):
-    v = row.get(key, "")
-    return str(v).strip() if pd.notna(v) and str(v).strip() not in ["nan", ""] else ""
-
-def first_val(rows, key):
-    for row in rows:
-        v = cell_val(row, key)
-        if v:
-            return v
-    return ""
-
-def ameral_entries(rows):
-    entries = []
-    for row in rows:
-        entry = {
-            "סוג": cell_val(row, "סוג אמרל"),
-            "מספר": cell_val(row, "מספר אמרל"),
-            "נוסף": cell_val(row, "אמרל נוסף"),
-        }
-        if any(entry.values()):
-            entries.append(entry)
-    return entries
-
-def fmt_ameral_lines(entries):
-    lines = []
-    multi = len(entries) > 1
-    for i, e in enumerate(entries, 1):
-        if multi:
-            lines.append(f"\n📦 אמרל {i}:")
-        elif not lines:
-            lines.append("\n📦 אמרל:")
-        if e["סוג"]:
-            lines.append(f"סוג אמרל: {e['סוג']}")
-        if e["מספר"]:
-            lines.append(f"מספר אמרל: {e['מספר']}")
-        if e["נוסף"]:
-            lines.append(f"אמרל נוסף: {e['נוסף']}")
-    return lines
-
 def fmt(rows):
     r = rows[0]
     lines = ["─" * 22]
-    val = lambda k: cell_val(r, k)
+    def val(k):
+        v = r.get(k, "")
+        return str(v).strip() if pd.notna(v) and str(v).strip() not in ["nan", ""] else ""
 
     if val("שם החייל"): lines.append(f"👤 שם: {val('שם החייל')}")
     if val("מספר אישי"): lines.append(f"🪪 מספר אישי: {val('מספר אישי')}")
@@ -116,21 +50,25 @@ def fmt(rows):
     if val("כוונת"): lines.append(f"🎯 כוונת: {val('כוונת')}")
     if val("מספר"): lines.append(f"📌 מספר כוונת: {val('מספר')}")
 
-    entries = ameral_entries(rows)
-    if entries:
-        lines.extend(fmt_ameral_lines(entries))
+    # אמרלים מכל השורות
+    amrals = []
+    for row in rows:
+        sug = str(row.get("סוג אמרל", "")).strip()
+        num = str(row.get("מספר אמרל", "")).strip()
+        extra = str(row.get("אמרל נוסף", "")).strip()
+        if sug and sug != "nan":
+            amrals.append(f"🔧 {sug}: {num}" if num and num != "nan" else f"🔧 {sug}")
+        if extra and extra != "nan":
+            amrals.append(f"🔧 {extra}")
 
-    when_signed = first_val(rows, "מתי חתם")
-    if when_signed:
-        lines.append(f"מתי חתם: {when_signed}")
+    if amrals:
+        lines.append("\n📦 אמרלים:")
+        lines.extend(amrals)
 
-    zoche = first_val(rows, "זוכה")
-    if zoche:
-        lines.append(f"זוכה: {zoche}")
-
-    chatam = first_val(rows, "חתם 30/4") or first_val(rows, "חתם 30\\4") or first_val(rows, "30/4")
-    if chatam:
-        lines.append(f"✅ חתם 30/4: {'כן' if chatam == '1' else chatam}")
+    # חתם 30/4
+    chatam = str(r.get("חתם 30/4", r.get("חתם 30\\4", r.get("30/4", "")))).strip()
+    if chatam and chatam not in ["nan", ""]:
+        lines.append(f"\n✅ חתם 30/4: {'כן' if chatam == '1' else chatam}")
 
     return "\n".join(lines)
 
@@ -186,56 +124,14 @@ async def go(u, q):
         await u.message.reply_text(header + "\n\n".join(parts))
 
 def main():
-    import sys
-    print("=== ploga-bot startup ===", flush=True)
-    print(f"RENDER={os.getenv('RENDER')!r}", flush=True)
-    print(f"TOKEN set={bool(TOKEN)}", flush=True)
-    print(f"SHEET_CSV_URL set={bool(URL1)}", flush=True)
-
-    if not TOKEN:
-        print("שגיאה: חסר TELEGRAM_TOKEN — הוסף ב-Render → Environment", flush=True)
-        raise SystemExit(1)
-    if not URL1:
-        print("שגיאה: חסר SHEET_CSV_URL — הוסף ב-Render → Environment", flush=True)
-        raise SystemExit(1)
-
     app = Application.builder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("search", srch))
     app.add_handler(CommandHandler("list", lst))
     app.add_handler(CommandHandler("columns", cols))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, txt))
-
-    on_render = os.getenv("RENDER") == "true"
-    host = os.getenv("RENDER_EXTERNAL_HOSTNAME", "")
-    webhook_base = (os.getenv("WEBHOOK_URL") or os.getenv("RENDER_EXTERNAL_URL", "")).rstrip("/")
-    if not webhook_base and host:
-        webhook_base = f"https://{host}"
-
-    try:
-        if on_render:
-            if not webhook_base:
-                print("שגיאה: חסר RENDER_EXTERNAL_URL / RENDER_EXTERNAL_HOSTNAME", flush=True)
-                raise SystemExit(1)
-            _patch_webhook_health()
-            port = int(os.getenv("PORT", "10000"))
-            path = os.getenv("WEBHOOK_PATH", "webhook")
-            url = f"{webhook_base}/{path}"
-            print(f"הבוט פועל בענן (webhook): {url}", flush=True)
-            app.run_webhook(
-                listen="0.0.0.0",
-                port=port,
-                url_path=path,
-                webhook_url=url,
-                drop_pending_updates=True,
-                bootstrap_retries=5,
-            )
-        else:
-            print("הבוט פועל!", flush=True)
-            app.run_polling(allowed_updates=Update.ALL_TYPES)
-    except Exception:
-        logging.exception("הבוט נכשל בהפעלה")
-        raise
+    print("הבוט פועל!")
+    app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
