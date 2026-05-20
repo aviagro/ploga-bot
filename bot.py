@@ -186,11 +186,17 @@ async def go(u, q):
         await u.message.reply_text(header + "\n\n".join(parts))
 
 def main():
+    import sys
+    print("=== ploga-bot startup ===", flush=True)
+    print(f"RENDER={os.getenv('RENDER')!r}", flush=True)
+    print(f"TOKEN set={bool(TOKEN)}", flush=True)
+    print(f"SHEET_CSV_URL set={bool(URL1)}", flush=True)
+
     if not TOKEN:
-        print("שגיאה: חסר TELEGRAM_TOKEN")
+        print("שגיאה: חסר TELEGRAM_TOKEN — הוסף ב-Render → Environment", flush=True)
         raise SystemExit(1)
     if not URL1:
-        print("שגיאה: חסר SHEET_CSV_URL")
+        print("שגיאה: חסר SHEET_CSV_URL — הוסף ב-Render → Environment", flush=True)
         raise SystemExit(1)
 
     app = Application.builder().token(TOKEN).build()
@@ -206,26 +212,30 @@ def main():
     if not webhook_base and host:
         webhook_base = f"https://{host}"
 
-    if on_render:
-        if not webhook_base:
-            print("שגיאה: חסר RENDER_EXTERNAL_URL ב-Render")
-            raise SystemExit(1)
-        _patch_webhook_health()
-        port = int(os.getenv("PORT", "10000"))
-        path = os.getenv("WEBHOOK_PATH", "webhook")
-        url = f"{webhook_base}/{path}"
-        print(f"הבוט פועל בענן (webhook): {url}")
-        app.run_webhook(
-            listen="0.0.0.0",
-            port=port,
-            url_path=path,
-            webhook_url=url,
-            allowed_updates=Update.ALL_TYPES,
-            drop_pending_updates=True,
-        )
-    else:
-        print("הבוט פועל!")
-        app.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        if on_render:
+            if not webhook_base:
+                print("שגיאה: חסר RENDER_EXTERNAL_URL / RENDER_EXTERNAL_HOSTNAME", flush=True)
+                raise SystemExit(1)
+            _patch_webhook_health()
+            port = int(os.getenv("PORT", "10000"))
+            path = os.getenv("WEBHOOK_PATH", "webhook")
+            url = f"{webhook_base}/{path}"
+            print(f"הבוט פועל בענן (webhook): {url}", flush=True)
+            app.run_webhook(
+                listen="0.0.0.0",
+                port=port,
+                url_path=path,
+                webhook_url=url,
+                drop_pending_updates=True,
+                bootstrap_retries=5,
+            )
+        else:
+            print("הבוט פועל!", flush=True)
+            app.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception:
+        logging.exception("הבוט נכשל בהפעלה")
+        raise
 
 if __name__ == "__main__":
     main()

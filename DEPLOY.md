@@ -13,16 +13,20 @@
 2. בחר את הריפו: `aviagro/ploga-bot`.
 3. Render יזהה את `render.yaml` — לחץ **Apply**.
 
-## שלב 3 — משתני סביבה (חובה)
+## שלב 3 — משתני סביבה (חובה — בלי זה הפריסה נכשלת!)
 
-לפני שהשירות עולה, הוסף ב-Render (במסך השירות → **Environment**):
+1. ב-Render לחץ על השירות **ploga-bot**
+2. בתפריט השמאלי: **Environment**
+3. הוסף **שני משתנים** (העתק מהקובץ `.env` במחשב שלך):
 
-| שם | ערך |
-|-----|-----|
-| `TELEGRAM_TOKEN` | הטוקן מ-BotFather (אותו שב-.env אצלך) |
-| `SHEET_CSV_URL` | קישור ה-CSV של הגיליון (אותו שב-.env) |
+| Key | Value |
+|-----|-------|
+| `TELEGRAM_TOKEN` | המספר הארוך מ-BotFather |
+| `SHEET_CSV_URL` | קישור ה-CSV של הגוגל שיטס |
 
-שמור (**Save Changes**) — Render יבנה ויעלה את הבוט מחדש.
+4. **Save, rebuild, and deploy** (או Manual Deploy)
+
+ב-Logs אמור להופיע: `TOKEN set=True` ו-`SHEET_CSV_URL set=True` — אם `False`, המשתנה לא הוגדר.
 
 ## שלב 4 — בדיקה
 
