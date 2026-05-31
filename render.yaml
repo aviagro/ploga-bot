@@ -13,3 +13,7 @@ services:
         sync: false
       - key: SHEET_CSV_URL
         sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: ALLOWED_EDITOR_IDS
+        sync: false

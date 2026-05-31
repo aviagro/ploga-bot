@@ -3,3 +3,7 @@ bot.log
 __pycache__/
 *.pyc
 .DS_Store
+*.save
+requirements.txtcat
+requirements.txtthon*
+shachar bot

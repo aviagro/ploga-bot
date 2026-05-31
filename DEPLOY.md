@@ -23,8 +23,18 @@
 |-----|-------|
 | `TELEGRAM_TOKEN` | המספר הארוך מ-BotFather |
 | `SHEET_CSV_URL` | קישור ה-CSV של הגוגל שיטס |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | (לעדכון נשק) תוכן קובץ Service Account |
+| `ALLOWED_EDITOR_IDS` | (אופציונלי) מזהי טלגרם מורשים לעריכה, מופרדים בפסיק |
 
-4. **Save, rebuild, and deploy** (או Manual Deploy)
+4. **Save, rebuild, and deploy**
+
+### עדכון נשק בגיליון (`/setweapon`)
+
+1. ב-[Google Cloud Console](https://console.cloud.google.com) צור פרויקט → הפעל **Google Sheets API**.
+2. צור **Service Account** → הורד קובץ JSON.
+3. בגוגל שיטס: **שתף** את הגיליון עם אימייל השירות (מ-`client_email` ב-JSON) כ-**עורך**.
+4. הדבק את כל תוכן ה-JSON במשתנה `GOOGLE_SERVICE_ACCOUNT_JSON` ב-Render.
+5. (מומלץ) הגדר `ALLOWED_EDITOR_IDS` — מזהה המשתמש שלך בטלגרם (מספר). (או Manual Deploy)
 
 ב-Logs אמור להופיע: `TOKEN set=True` ו-`SHEET_CSV_URL set=True` — אם `False`, המשתנה לא הוגדר.
 
