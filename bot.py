@@ -1,7 +1,17 @@
-import os, re, json, logging, requests, pandas as pd
+import os
+import re
+import json
+import logging
+import requests
+import pandas as pd
 from io import StringIO
+from threading import Thread
+from flask import Flask
 from dotenv import load_dotenv
+
+# טעינת משתני סביבה
 load_dotenv()
+
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application,
@@ -13,13 +23,27 @@ from telegram.ext import (
     filters,
 )
 
+# --- הגדרת שרת אינטרנט רקע (Flask) עבור בדיקות התקינות של Render ---
+flask_app = Flask('')
+
+@flask_app.route('/')
+def home():
+    return "Ploga Bot is alive and kicking!"
+
+def run_flask():
+    port = int(os.environ.get("PORT", 8080))
+    flask_app.run(host='0.0.0.0', port=port)
+# -------------------------------------------------------------------
+
 TOKEN = os.getenv("TELEGRAM_TOKEN", "")
 URL1 = os.getenv("SHEET_CSV_URL", "")
+
 SHEET_ERROR = (
     "לא הצלחתי לטעון את הגיליון.\n"
     "בדוק ש-SHEET_CSV_URL מסתיים ב-/export?format=csv "
     "ושהגיליון משותף לצפייה (Anyone with the link → Viewer)."
 )
+
 HELP_TEXT = (
     "📋 פקודות:\n"
     "/search שם — חיפוש\n"
@@ -31,12 +55,14 @@ HELP_TEXT = (
     "/cancel — ביטול עדכון נשק\n"
     "/help — עזרה"
 )
+
 SHEETS_WRITE_HELP = (
     "עדכון הגיליון דורש חשבון שירות Google.\n"
     "הוסף ב-.env / Render:\n"
     "GOOGLE_SERVICE_ACCOUNT_JSON — תוכן קובץ ה-JSON\n"
     "ושתף את הגיליון עם אימייל השירות (עורך)."
 )
+
 SW_NAME, SW_WEAPON, SW_NUMBER, SW_CONFIRM = range(4)
 logging.basicConfig(level=logging.INFO)
 
@@ -147,7 +173,7 @@ def search(q, df=None):
         return None
     m = df.apply(lambda row: row.astype(str).str.lower().str.contains(q.lower(), na=False).any(), axis=1)
     results = df[m]
-    # קבץ לפי שם חייל
+    
     grouped = {}
     for _, row in results.iterrows():
         name = str(row.get("שם החייל", "")).strip()
@@ -171,7 +197,6 @@ def fmt(rows):
     if val("כוונת"): lines.append(f"🎯 כוונת: {val('כוונת')}")
     if val("מספר"): lines.append(f"📌 מספר כוונת: {val('מספר')}")
 
-    # אמרלים מכל השורות
     amrals = []
     for row in rows:
         sug = str(row.get("סוג אמרל", "")).strip()
@@ -186,23 +211,22 @@ def fmt(rows):
         lines.append("\n📦 אמרלים:")
         lines.extend(amrals)
 
-    # חתם 30/4
     chatam = str(r.get("חתם 30/4", r.get("חתם 30\\4", r.get("30/4", "")))).strip()
     if chatam and chatam not in ["nan", ""]:
         lines.append(f"\n✅ חתם 30/4: {'כן' if chatam == '1' else chatam}")
 
     return "\n".join(lines)
 
-async def start(u, c):
+async def start(u: Update, c: ContextTypes.DEFAULT_TYPE):
     await u.message.reply_text(
         "שלום! שלח שם חייל לחיפוש, או /help לעזרה.\n"
         "/list — רשימה | /columns — עמודות"
     )
 
-async def help_cmd(u, c):
+async def help_cmd(u: Update, c: ContextTypes.DEFAULT_TYPE):
     await u.message.reply_text(HELP_TEXT)
 
-async def cols(u, c):
+async def cols(u: Update, c: ContextTypes.DEFAULT_TYPE):
     df = fetch()
     if df is None:
         await u.message.reply_text(SHEET_ERROR)
@@ -210,7 +234,7 @@ async def cols(u, c):
     cs = [x for x in df.columns if "Unnamed" not in x]
     await u.message.reply_text(" | ".join(cs))
 
-async def lst(u, c):
+async def lst(u: Update, c: ContextTypes.DEFAULT_TYPE):
     df = fetch()
     if df is None:
         await u.message.reply_text(SHEET_ERROR)
@@ -226,18 +250,20 @@ async def lst(u, c):
         team = r.get("צוות", "")
         weapon = r.get("נשק", "")
         msg += f"{name} | {team} | {weapon}\n"
+    if not msg:
+        msg = "לא נמצאו נתונים להצגה."
     await u.message.reply_text(msg)
 
-async def srch(u, c):
+async def srch(u: Update, c: ContextTypes.DEFAULT_TYPE):
     if not c.args:
         await u.message.reply_text("נא לציין מה לחפש")
         return
     await go(u, " ".join(c.args))
 
-async def txt(u, c):
+async def txt(u: Update, c: ContextTypes.DEFAULT_TYPE):
     await go(u, u.message.text)
 
-async def setweapon_entry(u, c):
+async def setweapon_entry(u: Update, c: ContextTypes.DEFAULT_TYPE):
     if not can_edit(u.effective_user.id):
         await u.message.reply_text("אין לך הרשאה לעדכן נשק.")
         return ConversationHandler.END
@@ -258,7 +284,7 @@ async def setweapon_entry(u, c):
     )
     return SW_NAME
 
-async def sw_name(u, c):
+async def sw_name(u: Update, c: ContextTypes.DEFAULT_TYPE):
     name = u.message.text.strip()
     if not name:
         await u.message.reply_text("נא לשלוח שם חייל.")
@@ -277,7 +303,7 @@ async def sw_name(u, c):
     await u.message.reply_text("שלח סוג נשק (למשל: מיקרו תבור):")
     return SW_WEAPON
 
-async def sw_weapon(u, c):
+async def sw_weapon(u: Update, c: ContextTypes.DEFAULT_TYPE):
     weapon = u.message.text.strip()
     if not weapon:
         await u.message.reply_text("נא לשלוח סוג נשק.")
@@ -286,7 +312,7 @@ async def sw_weapon(u, c):
     await u.message.reply_text("שלח מספר נשק:")
     return SW_NUMBER
 
-async def sw_number(u, c):
+async def sw_number(u: Update, c: ContextTypes.DEFAULT_TYPE):
     number = u.message.text.strip()
     if not number:
         await u.message.reply_text("נא לשלוח מספר נשק.")
@@ -308,25 +334,35 @@ async def sw_number(u, c):
     )
     return SW_CONFIRM
 
-async def sw_confirm(u, c):
+async def sw_confirm(u: Update, c: ContextTypes.DEFAULT_TYPE):
     q = u.callback_query
     await q.answer()
-    if q.data == "sw_no":
-        await q.edit_message_text("בוטל.")
-        return ConversationHandler.END
+    
     d = c.user_data.get("sw", {})
-    if not d.get("name"):
-        await q.edit_message_text("שגיאה — התחל מחדש עם /setweapon")
+    
+    if q.data == "sw_no":
+        await q.edit_message_text("העדכון בוטל.")
+        c.user_data.pop("sw", None)
         return ConversationHandler.END
+
+    if not d.get("name"):
+        await q.edit_message_text("שגיאה — פג תוקף המידע. התחל מחדש עם /setweapon")
+        c.user_data.pop("sw", None)
+        return ConversationHandler.END
+        
     ok, msg = update_weapon_in_sheet(d["name"], d["weapon"], d["number"])
     await q.edit_message_text(msg if ok else f"❌ {msg}")
+    
+    # ניקוי נתונים בסיום מוצלח
+    c.user_data.pop("sw", None)
     return ConversationHandler.END
 
-async def cancel_cmd(u, c):
-    await u.message.reply_text("בוטל.")
+async def cancel_cmd(u: Update, c: ContextTypes.DEFAULT_TYPE):
+    await u.message.reply_text("התהליך בוטל.")
+    c.user_data.pop("sw", None)
     return ConversationHandler.END
 
-async def go(u, q):
+async def go(u: Update, q: str):
     await u.message.reply_text(f"מחפש {q}...")
     res = search(q)
     if res is None:
@@ -349,6 +385,7 @@ def main():
     app.add_handler(CommandHandler("search", srch))
     app.add_handler(CommandHandler("list", lst))
     app.add_handler(CommandHandler("columns", cols))
+    
     app.add_handler(
         ConversationHandler(
             entry_points=[CommandHandler("setweapon", setweapon_entry)],
@@ -363,8 +400,15 @@ def main():
         )
     )
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, txt))
+    
     print("הבוט פועל!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
+    # הפעלת שרת ה-Flask ברקע כדי לעבור את בדיקת ה-Health Check של Render
+    t = Thread(target=run_flask)
+    t.daemon = True
+    t.start()
+    
+    # הפעלת הבוט הראשי
     main()
